@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+          JWT_SECRET: "test-ci-secret-32-chars-minimum!!"
+          SITE_KEY_PEPPER: "test-ci-pepper-16"
+          SUPER_ADMIN_JWT_SECRET: "test-ci-super-admin-jwt-32chars-min!!"
+
+      - name: Build API
+        run: npm run build
+
+      - name: Build super-admin SPA
+        run: npm ci && npm run build
+        working-directory: super-admin-web
+        env:
+          VITE_API_BASE_URL: https://api.example.com
