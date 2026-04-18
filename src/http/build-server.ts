@@ -1693,46 +1693,52 @@ export async function buildServer(env: Env) {
     );
   }
 
-  if (isResendConfigured(env)) {
-    app.post(
-      "/v1/admin/email/test",
-      {
-        preHandler: authPreOrgAdmin,
-        schema: {
-          tags: ["integrations"],
-          summary:
-            "Send a test email via Resend (requires org_admin; verify domain / from-address in Resend for production)",
-          security: [{ bearerAuth: [] }],
-          body: {
-            type: "object",
-            required: ["to"],
-            properties: {
-              to: { type: "string", format: "email" },
-            },
+  app.post(
+    "/v1/admin/email/test",
+    {
+      preHandler: authPreOrgAdmin,
+      schema: {
+        tags: ["integrations"],
+        summary:
+          "Send a test email via Resend (requires org_admin; verify domain / from-address in Resend for production). Returns 503 when RESEND_API_KEY is not set.",
+        security: [{ bearerAuth: [] }],
+        body: {
+          type: "object",
+          required: ["to"],
+          properties: {
+            to: { type: "string", format: "email" },
           },
         },
       },
-      async (req, reply) => {
-        const parsed = emailTestBodySchema.safeParse(req.body ?? {});
-        if (!parsed.success) {
-          return reply.status(400).send({
-            error: "validation_error",
-            details: parsed.error.flatten(),
-          });
-        }
-        try {
-          const result = await sendTestEmail(env, parsed.data.to);
-          return reply.send({ ok: true, messageId: result.id ?? null });
-        } catch (err) {
-          app.log.error(err);
-          return reply.status(502).send({
-            error: "email_send_failed",
-            message: err instanceof Error ? err.message : String(err),
-          });
-        }
-      },
-    );
-  }
+    },
+    async (req, reply) => {
+      if (!isResendConfigured(env)) {
+        return reply.status(503).send({
+          error: "email_not_configured",
+          message:
+            "Transactional email is not enabled on this server (set RESEND_API_KEY).",
+          hint: "Lead notification recipients can still be saved; delivery requires Resend on the API host.",
+        });
+      }
+      const parsed = emailTestBodySchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: "validation_error",
+          details: parsed.error.flatten(),
+        });
+      }
+      try {
+        const result = await sendTestEmail(env, parsed.data.to);
+        return reply.send({ ok: true, messageId: result.id ?? null });
+      } catch (err) {
+        app.log.error(err);
+        return reply.status(502).send({
+          error: "email_send_failed",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    },
+  );
 
   await registerSuperAdminRoutes(app, { env, db });
 
