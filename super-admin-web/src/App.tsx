@@ -2,16 +2,25 @@ import { useCallback, useEffect, useState } from "react";
 import {
   apiFetch,
   clearSuperAdminSession,
+  fetchPublicHealth,
   getSuperAdminEmail,
   getToken,
   SESSION_LOST_EVENT,
   setSuperAdminEmail,
   setToken,
+  type HealthResponse,
 } from "./api";
 
 const IDLE_SIGN_OUT_MS = 30 * 60 * 1000;
 
-type Tab = "account" | "orgs" | "sites" | "users" | "leads" | "media";
+type Tab =
+  | "dashboard"
+  | "account"
+  | "orgs"
+  | "sites"
+  | "users"
+  | "leads"
+  | "media";
 
 type Organization = {
   id: string;
@@ -173,7 +182,7 @@ function ReauthModal({
 }
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("orgs");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [loggedIn, setLoggedIn] = useState(() => Boolean(getToken()));
   const [banner, setBanner] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -238,17 +247,17 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="app-shell min-h-screen">
       {banner && (
         <div
-          className="border-b border-amber-500/40 bg-amber-950/80 px-4 py-3 text-amber-100"
+          className="border-b border-amber-500/30 bg-amber-950/90 px-4 py-3 text-amber-50 backdrop-blur-md"
           role="alert"
         >
           <div className="mx-auto flex max-w-6xl items-start justify-between gap-4">
-            <p className="text-sm">{banner}</p>
+            <p className="text-sm leading-relaxed">{banner}</p>
             <button
               type="button"
-              className="shrink-0 text-amber-300 underline"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-amber-200/90 hover:bg-amber-900/50"
               onClick={clearBanner}
             >
               Dismiss
@@ -256,19 +265,26 @@ export default function App() {
           </div>
         </div>
       )}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-slate-950/75 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight text-white">
-              Elevate super admin
-            </h1>
-            <p className="text-xs text-slate-400">
-              Cross-tenant operations — keep this deployment private.
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/20">
+              <span className="text-lg font-bold text-white" aria-hidden>
+                E
+              </span>
+            </div>
+            <div>
+              <h1 className="text-base font-semibold tracking-tight text-white md:text-lg">
+                Elevate super admin
+              </h1>
+              <p className="text-xs text-slate-500">
+                Cross-tenant control plane · restrict access to trusted networks
+              </p>
+            </div>
           </div>
           <button
             type="button"
-            className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            className="rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-white/[0.06]"
             onClick={() => {
               clearSuperAdminSession(false);
               setLoggedIn(false);
@@ -277,9 +293,10 @@ export default function App() {
             Sign out
           </button>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 px-4 pb-3">
+        <nav className="mx-auto flex max-w-6xl flex-wrap gap-1.5 px-4 pb-4">
           {(
             [
+              ["dashboard", "Overview"],
               ["account", "Account"],
               ["orgs", "Organizations"],
               ["sites", "Sites"],
@@ -292,10 +309,10 @@ export default function App() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+              className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition ${
                 tab === id
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md shadow-violet-500/25"
+                  : "text-slate-400 hover:bg-white/[0.05] hover:text-slate-200"
               }`}
             >
               {label}
@@ -303,7 +320,10 @@ export default function App() {
           ))}
         </nav>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-8 md:py-10">
+        {tab === "dashboard" && (
+          <DashboardPanel onError={showError} onNavigate={setTab} />
+        )}
         {tab === "account" && (
           <AccountPanel onError={showError} onSuccessMsg={setBanner} />
         )}
@@ -319,6 +339,243 @@ export default function App() {
         {tab === "leads" && <LeadsPanel onError={showError} />}
         {tab === "media" && <MediaPanel onError={showError} />}
       </main>
+    </div>
+  );
+}
+
+function DashboardPanel({
+  onError,
+  onNavigate,
+}: {
+  onError: (e: unknown) => void;
+  onNavigate: (t: Tab) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [counts, setCounts] = useState<{
+    orgs: number;
+    sites: number;
+    users: number;
+    leads: number;
+    media: number;
+  } | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const h = await fetchPublicHealth();
+      setHealth(h);
+      const [orgRes, siteRes, userRes, leadsRes, mediaRes] = await Promise.all([
+        apiFetch<{ items: Organization[] }>("/v1/super-admin/organizations"),
+        apiFetch<{ items: SiteRow[] }>("/v1/super-admin/sites"),
+        apiFetch<{ items: UserRow[] }>("/v1/super-admin/users"),
+        apiFetch<{ total: number }>("/v1/super-admin/leads?limit=1&offset=0"),
+        apiFetch<{ total: number }>(
+          "/v1/super-admin/media-assets?limit=1&offset=0",
+        ),
+      ]);
+      setCounts({
+        orgs: orgRes.items.length,
+        sites: siteRes.items.length,
+        users: userRes.items.length,
+        leads: leadsRes.total,
+        media: mediaRes.total,
+      });
+    } catch (e) {
+      onError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const integ = health?.integrations;
+
+  const statCards: {
+    label: string;
+    value: string | number;
+    hint: string;
+    tab: Tab;
+  }[] =
+    counts && !loading
+      ? [
+          {
+            label: "Organizations",
+            value: counts.orgs,
+            hint: "Tenants on the platform",
+            tab: "orgs",
+          },
+          {
+            label: "Sites",
+            value: counts.sites,
+            hint: "Publishable site keys",
+            tab: "sites",
+          },
+          {
+            label: "Staff users",
+            value: counts.users,
+            hint: "Org logins (JWT)",
+            tab: "users",
+          },
+          {
+            label: "Leads (all time)",
+            value: counts.leads,
+            hint: "Form submissions",
+            tab: "leads",
+          },
+          {
+            label: "Media assets",
+            value: counts.media,
+            hint: "Cloudinary-backed uploads",
+            tab: "media",
+          },
+        ]
+      : [];
+
+  return (
+    <div className="space-y-10">
+      <div className="relative overflow-hidden rounded-2xl border border-white/[0.07] bg-gradient-to-br from-slate-900/90 via-slate-900/50 to-violet-950/30 p-6 shadow-2xl shadow-black/40 md:p-8">
+        <div
+          className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-fuchsia-500/15 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 -left-16 h-56 w-56 rounded-full bg-violet-500/10 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative">
+          <p className="text-xs font-semibold uppercase tracking-widest text-violet-300/90">
+            Platform overview
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
+            Operations dashboard
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
+            Monitor tenants, keys, and content pipeline. Tenant-facing CMS (blog,
+            hiring, portfolio) and lead notification emails are managed in each org’s
+            staff admin — this console is for provisioning and cross-org visibility.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-white/[0.08] px-4 py-2 text-sm font-medium text-white ring-1 ring-white/10 transition hover:bg-white/[0.12]"
+              onClick={() => void load()}
+              disabled={loading}
+            >
+              {loading ? "Refreshing…" : "Refresh data"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-300 hover:bg-white/[0.05]"
+              onClick={() => onNavigate("orgs")}
+            >
+              New organization →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium uppercase tracking-wider text-slate-500">
+          API status
+        </h3>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-xl border border-white/[0.06] bg-slate-900/40 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Health</p>
+            <p className="mt-1 text-lg font-semibold text-emerald-400">
+              {health?.status === "ok" ? "OK" : health ? String(health.status) : "—"}
+            </p>
+            <p className="mt-1 font-mono text-[11px] text-slate-500">
+              {health?.apiVersion ? `API ${health.apiVersion}` : "GET /v1/health"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-slate-900/40 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Email (Resend)</p>
+            <p className="mt-1 text-lg font-semibold text-white">
+              {integ?.email === true ? (
+                <span className="text-emerald-400">Enabled</span>
+              ) : integ?.email === false ? (
+                <span className="text-amber-400/90">Not configured</span>
+              ) : (
+                "—"
+              )}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Lead delivery requires <code className="text-slate-400">RESEND_API_KEY</code> on the API host.
+            </p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-slate-900/40 p-4 backdrop-blur-sm">
+            <p className="text-xs text-slate-500">Cloudinary</p>
+            <p className="mt-1 text-lg font-semibold text-white">
+              {integ?.cloudinary === true ? (
+                <span className="text-emerald-400">Enabled</span>
+              ) : integ?.cloudinary === false ? (
+                <span className="text-slate-500">Off</span>
+              ) : (
+                "—"
+              )}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              Required for media uploads & CMS images in tenant apps.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-medium uppercase tracking-wider text-slate-500">
+          Inventory
+        </h3>
+        {loading ? (
+          <p className="mt-4 text-sm text-slate-500">Loading metrics…</p>
+        ) : counts ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {statCards.map((c) => (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => onNavigate(c.tab)}
+                className="group rounded-xl border border-white/[0.06] bg-slate-900/30 p-4 text-left transition hover:border-violet-500/30 hover:bg-slate-900/60"
+              >
+                <p className="text-xs font-medium text-slate-500">{c.label}</p>
+                <p className="mt-2 text-3xl font-semibold tabular-nums text-white">
+                  {c.value}
+                </p>
+                <p className="mt-2 text-xs text-slate-500 group-hover:text-slate-400">
+                  {c.hint} · <span className="text-violet-400/90">Open</span>
+                </p>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-slate-500">No data.</p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-white/[0.06] bg-slate-900/25 p-6">
+        <h3 className="text-sm font-semibold text-white">Quick reference</h3>
+        <ul className="mt-4 list-inside list-disc space-y-2 text-sm text-slate-400">
+          <li>
+            <strong className="text-slate-300">CORS</strong> must allow PATCH/DELETE for
+            tenant staff admins (API registers GET, HEAD, POST, PUT, PATCH, DELETE,
+            OPTIONS).
+          </li>
+          <li>
+            <strong className="text-slate-300">Leads</strong>: org staff delete via{" "}
+            <code className="rounded bg-slate-800 px-1 text-xs">DELETE /v1/leads/:id</code>
+            ; super-admin can list/delete cross-tenant from the Leads tab.
+          </li>
+          <li>
+            <strong className="text-slate-300">Tenant CMS</strong> (blog, hiring,
+            portfolio) uses org JWT routes under{" "}
+            <code className="rounded bg-slate-800 px-1 text-xs">/v1/admin/…</code> — not
+            this console.
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }
@@ -362,17 +619,17 @@ function LoginView({
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4">
+    <div className="app-shell flex min-h-screen flex-col items-center justify-center px-4 py-12">
       {banner && (
         <div
-          className="mb-6 w-full max-w-md rounded-lg border border-rose-500/40 bg-rose-950/60 px-4 py-3 text-sm text-rose-100"
+          className="mb-6 w-full max-w-md rounded-xl border border-rose-500/30 bg-rose-950/80 px-4 py-3 text-sm text-rose-50 backdrop-blur-sm"
           role="alert"
         >
           <div className="flex justify-between gap-2">
             <span>{banner}</span>
             <button
               type="button"
-              className="shrink-0 underline"
+              className="shrink-0 rounded-md px-2 py-0.5 text-rose-200 hover:bg-rose-900/50"
               onClick={onDismissBanner}
             >
               Dismiss
@@ -380,45 +637,57 @@ function LoginView({
           </div>
         </div>
       )}
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/90 p-8 shadow-xl shadow-black/40">
-        <h1 className="text-center text-xl font-semibold text-white">
-          Super admin sign in
-        </h1>
-        <p className="mt-1 text-center text-sm text-slate-400">
-          Uses credentials from the <code className="text-slate-300">super_admins</code>{" "}
-          table.
-        </p>
-        <form className="mt-8 space-y-4" onSubmit={submit}>
-          <label className="block text-sm">
-            <span className="text-slate-400">Email</span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
-              type="email"
-              autoComplete="username"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-slate-400">Password</span>
-            <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-lg bg-violet-600 py-2.5 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-900/70 p-8 shadow-2xl shadow-black/50 backdrop-blur-md">
+        <div
+          className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-violet-600/20 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative">
+          <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-lg shadow-violet-500/30">
+            <span className="text-xl font-bold text-white">E</span>
+          </div>
+          <h1 className="text-center text-xl font-semibold tracking-tight text-white">
+            Super admin sign in
+          </h1>
+          <p className="mt-2 text-center text-sm text-slate-400">
+            Credentials from the{" "}
+            <code className="rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-200">
+              super_admins
+            </code>{" "}
+            table.
+          </p>
+          <form className="mt-8 space-y-4" onSubmit={submit}>
+            <label className="block text-sm">
+              <span className="text-slate-400">Email</span>
+              <input
+                className="mt-1.5 w-full rounded-xl border border-white/[0.08] bg-slate-950/80 px-3 py-2.5 text-slate-100 outline-none ring-violet-500/50 transition focus:ring-2"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-400">Password</span>
+              <input
+                className="mt-1.5 w-full rounded-xl border border-white/[0.08] bg-slate-950/80 px-3 py-2.5 text-slate-100 outline-none ring-violet-500/50 transition focus:ring-2"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={busy}
+              className="w-full rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25 transition hover:from-violet-500 hover:to-fuchsia-500 disabled:opacity-50"
+            >
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );

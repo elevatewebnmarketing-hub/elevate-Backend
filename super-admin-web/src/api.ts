@@ -51,6 +51,26 @@ export type ApiErrorBody = {
   code?: string;
 };
 
+/** Public `GET /v1/health` — no auth. Used by the dashboard for integration flags. */
+export type HealthResponse = {
+  status?: string;
+  service?: string;
+  apiVersion?: string;
+  time?: string;
+  uptimeSeconds?: number;
+  integrations?: { cloudinary?: boolean; email?: boolean };
+};
+
+export async function fetchPublicHealth(): Promise<HealthResponse | null> {
+  try {
+    const res = await fetch(`${getApiBase()}/v1/health`);
+    if (!res.ok) return null;
+    return (await res.json()) as HealthResponse;
+  } catch {
+    return null;
+  }
+}
+
 export type ApiFetchOptions = RequestInit & {
   json?: unknown;
   /**
