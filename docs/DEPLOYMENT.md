@@ -36,6 +36,8 @@ Copy [`.env.example`](../.env.example) and set these for your host (Render, Rail
 | `CORS_ORIGINS` | Comma-separated **exact** origins of your admin app, marketing sites, and **super-admin SPA** origin (e.g. `https://backend.elevatewebandmarketing.com`) — no `*` in production if possible |
 | `SUPER_ADMIN_JWT_SECRET` | At least 32 characters; signs super-admin JWTs (separate from `JWT_SECRET`) |
 
+If the browser console shows **“Method PATCH is not allowed by Access-Control-Allow-Methods”**, the API must advertise **PATCH** (and related verbs) in CORS preflight — current `build-server` registers `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS` for allowed origins. Deploy an up-to-date backend build.
+
 ### Common optional
 
 | Variable | Purpose |

@@ -214,6 +214,8 @@ export async function buildServer(env: Env) {
       cb(new Error("Not allowed by CORS"), false);
     },
     credentials: true,
+    // @fastify/cors v11+ defaults to safelisted methods (GET, HEAD, POST) only — PATCH/PUT/DELETE must be explicit.
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   });
 
   await app.register(jwt, {
