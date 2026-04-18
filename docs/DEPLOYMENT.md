@@ -60,6 +60,18 @@ If the browser console shows **“Method PATCH is not allowed by Access-Control-
 
 `GET /v1/health` includes `integrations.cloudinary` and `integrations.email` booleans (no secrets exposed).
 
+### Troubleshooting: `DELETE /v1/leads/:id` returns 404
+
+Open DevTools → **Network** → select the failing **DELETE** request → **Response** (not only the status code).
+
+| What you see | Likely cause |
+|--------------|--------------|
+| JSON body `{"error":"not_found"}` | No row deleted: that **lead id** does not exist for **your org** in the DB (wrong id, already deleted, or list/cache stale). Refresh **GET /v1/leads** and delete again using the `id` from the response. |
+| Empty body, HTML, or no `not_found` JSON | **`DELETE` is not registered** on the server you are calling—almost always **Render (or host) is still running an older API build** before `DELETE /v1/leads/:id` existed. Redeploy the API from the current repo `main` (or the branch your service tracks), then retry. |
+| 403 | Authenticated but not **`org_admin`** (viewers cannot delete). |
+
+Quick check without the admin UI: same host as the app, `DELETE /v1/leads/<uuid>` with `Authorization: Bearer <staff JWT>`—if you still get 404 with an empty/non-JSON body, treat it as a **deploy/version** issue on the API.
+
 ---
 
 ## 3. Third-party setup (in order)

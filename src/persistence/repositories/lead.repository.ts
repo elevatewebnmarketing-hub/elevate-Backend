@@ -185,6 +185,20 @@ export function createLeadRepository(db: Db) {
       };
     },
 
+    /** Deletes the lead and extension rows (FK cascade). Returns true if a row was removed. */
+    async deleteForOrganization(
+      organizationId: string,
+      leadId: string,
+    ): Promise<boolean> {
+      const removed = await db
+        .delete(leads)
+        .where(
+          and(eq(leads.organizationId, organizationId), eq(leads.id, leadId)),
+        )
+        .returning({ id: leads.id });
+      return removed.length > 0;
+    },
+
     async countForOrganization(
       organizationId: string,
       filters: {

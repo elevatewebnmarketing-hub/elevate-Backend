@@ -824,6 +824,32 @@ export async function buildServer(env: Env) {
     },
   );
 
+  app.delete(
+    "/v1/leads/:id",
+    {
+      preHandler: authPreOrgAdmin,
+      schema: {
+        tags: ["admin"],
+        summary: "Delete a lead (org_admin only)",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string", format: "uuid" } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const orgId = req.user.org_id;
+      const { id } = req.params as { id: string };
+      const ok = await leadRepo.deleteForOrganization(orgId, id);
+      if (!ok) {
+        return reply.status(404).send({ error: "not_found" });
+      }
+      return reply.status(204).send();
+    },
+  );
+
   app.get(
     "/v1/admin/organization",
     {
