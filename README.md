@@ -78,6 +78,12 @@ npm run seed
 
 The script prints a **publishable site key** and default admin credentials. Override with env vars: `SEED_ORG_SLUG`, `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_SITE_KEY`.
 
+On **Windows PowerShell**, set vars for one command like this (Unix `VAR=value cmd` does not apply):
+
+```powershell
+$env:SEED_ORG_SLUG = "new-org"; npm run seed
+```
+
 ## Super admin (platform operator)
 
 Super admins live in the `super_admins` table and authenticate with a **separate JWT** from org staff (`SUPER_ADMIN_JWT_SECRET`). API routes are under `/v1/super-admin/*`.

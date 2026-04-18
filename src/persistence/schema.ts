@@ -6,6 +6,7 @@ import {
   boolean,
   index,
   uniqueIndex,
+  integer,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
@@ -31,6 +32,7 @@ export const organizations = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    leadsNotificationEmail: text("leads_notification_email"),
   },
   (t) => [uniqueIndex("organizations_slug_uidx").on(t.slug)],
 );
@@ -50,6 +52,7 @@ export const sites = pgTable(
       .defaultNow()
       .notNull(),
     rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+    leadsNotificationEmail: text("leads_notification_email"),
   },
   (t) => [
     uniqueIndex("sites_key_hash_uidx").on(t.keyHash),
@@ -167,6 +170,87 @@ export const mediaAssets = pgTable(
   ],
 );
 
+export const blogPosts = pgTable(
+  "blog_posts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    excerpt: text("excerpt"),
+    body: text("body").notNull(),
+    status: text("status").notNull().default("draft"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    coverMediaAssetId: uuid("cover_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("blog_posts_org_slug_uidx").on(t.organizationId, t.slug),
+    index("blog_posts_org_published_idx").on(t.organizationId, t.publishedAt),
+  ],
+);
+
+export const hiringPositions = pgTable(
+  "hiring_positions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    location: text("location"),
+    applicationUrl: text("application_url"),
+    isPublished: boolean("is_published").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [index("hiring_positions_org_idx").on(t.organizationId, t.sortOrder)],
+);
+
+export const portfolioProjects = pgTable(
+  "portfolio_projects",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    summary: text("summary"),
+    body: text("body"),
+    imageMediaAssetId: uuid("image_media_asset_id").references(
+      () => mediaAssets.id,
+      { onDelete: "set null" },
+    ),
+    isPublished: boolean("is_published").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("portfolio_projects_org_idx").on(t.organizationId, t.sortOrder),
+  ],
+);
+
 /** Platform operators (separate from org-scoped `users`). */
 export const superAdmins = pgTable(
   "super_admins",
@@ -186,6 +270,9 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
   leads: many(leads),
   mediaAssets: many(mediaAssets),
+  blogPosts: many(blogPosts),
+  hiringPositions: many(hiringPositions),
+  portfolioProjects: many(portfolioProjects),
 }));
 
 export const sitesRelations = relations(sites, ({ one, many }) => ({
@@ -237,7 +324,7 @@ export const leadRealEstateRelations = relations(leadRealEstate, ({ one }) => ({
   }),
 }));
 
-export const mediaAssetsRelations = relations(mediaAssets, ({ one }) => ({
+export const mediaAssetsRelations = relations(mediaAssets, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [mediaAssets.organizationId],
     references: [organizations.id],
@@ -245,5 +332,36 @@ export const mediaAssetsRelations = relations(mediaAssets, ({ one }) => ({
   uploadedByUser: one(users, {
     fields: [mediaAssets.uploadedByUserId],
     references: [users.id],
+  }),
+  blogCoverPosts: many(blogPosts),
+  portfolioProjects: many(portfolioProjects),
+}));
+
+export const blogPostsRelations = relations(blogPosts, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [blogPosts.organizationId],
+    references: [organizations.id],
+  }),
+  coverMediaAsset: one(mediaAssets, {
+    fields: [blogPosts.coverMediaAssetId],
+    references: [mediaAssets.id],
+  }),
+}));
+
+export const hiringPositionsRelations = relations(hiringPositions, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [hiringPositions.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const portfolioProjectsRelations = relations(portfolioProjects, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [portfolioProjects.organizationId],
+    references: [organizations.id],
+  }),
+  imageMediaAsset: one(mediaAssets, {
+    fields: [portfolioProjects.imageMediaAssetId],
+    references: [mediaAssets.id],
   }),
 }));

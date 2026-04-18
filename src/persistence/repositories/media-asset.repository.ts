@@ -117,6 +117,23 @@ export function createMediaAssetRepository(db: Db) {
 
       return { items: rows, total: countRow?.n ?? 0 };
     },
+
+    async existsForOrganization(
+      assetId: string,
+      organizationId: string,
+    ): Promise<boolean> {
+      const rows = await db
+        .select({ id: mediaAssets.id })
+        .from(mediaAssets)
+        .where(
+          and(
+            eq(mediaAssets.id, assetId),
+            eq(mediaAssets.organizationId, organizationId),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0;
+    },
   };
 }
 
