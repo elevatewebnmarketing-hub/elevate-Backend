@@ -93,6 +93,7 @@ Copy [`.env.example`](../.env.example) and set these for your host (Render, Rail
 3. Set all required env vars on the platform (including `SUPER_ADMIN_JWT_SECRET`).
 4. Run **`npm run db:migrate`** once per database (or as part of release job) before traffic hits new versions.
 5. **First super admin:** if `super_admins` is empty, set bootstrap email/password, run `npm run super-admin:bootstrap`, then unset the bootstrap password from env.
+6. **Change super-admin email or password later:** use the super-admin SPA **Account** tab, or call `GET /v1/super-admin/me`, `PATCH /v1/super-admin/me/email`, and `POST /v1/super-admin/me/password` with a valid super-admin JWT (current password required for each change).
 
 ### D2. Two-subdomain layout (Elevate)
 

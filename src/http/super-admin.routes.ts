@@ -48,6 +48,22 @@ const passwordSchema = z.object({
   password: z.string().min(8),
 });
 
+const superAdminMeEmailSchema = z.object({
+  email: z.string().email(),
+  currentPassword: z.string().min(1),
+});
+
+const superAdminMePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+function superAdminIdFromRequest(req: FastifyRequest): string | undefined {
+  const u = req.user as { sub?: unknown } | undefined;
+  const sub = u?.sub;
+  return typeof sub === "string" ? sub : undefined;
+}
+
 const mediaListQuerySchema = z.object({
   q: z.string().optional(),
   organizationId: z.string().uuid().optional(),
@@ -164,6 +180,147 @@ export async function registerSuperAdminRoutes(
         token_type: "Bearer",
         expires_in: env.SUPER_ADMIN_ACCESS_EXPIRES_IN,
       });
+    },
+  );
+
+  app.get(
+    "/v1/super-admin/me",
+    {
+      preHandler: ipAllowAndVerifySuperJwt,
+      schema: {
+        tags: ["super-admin"],
+        security: [{ superAdminBearer: [] }],
+        summary: "Current super-admin profile (no secrets)",
+      },
+    },
+    async (req, reply) => {
+      const id = superAdminIdFromRequest(req);
+      if (!id) {
+        return reply.status(401).send({ error: "unauthorized" });
+      }
+      const row = await repo.findSuperAdminById(id);
+      if (!row) {
+        return reply.status(404).send({ error: "not_found" });
+      }
+      return {
+        id: row.id,
+        email: row.email,
+        createdAt: row.createdAt.toISOString(),
+      };
+    },
+  );
+
+  app.patch(
+    "/v1/super-admin/me/email",
+    {
+      preHandler: ipAllowAndVerifySuperJwt,
+      schema: {
+        tags: ["super-admin"],
+        security: [{ superAdminBearer: [] }],
+        summary: "Change super-admin email (requires current password)",
+        body: {
+          type: "object",
+          required: ["email", "currentPassword"],
+          properties: {
+            email: { type: "string", format: "email" },
+            currentPassword: { type: "string" },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const id = superAdminIdFromRequest(req);
+      if (!id) {
+        return reply.status(401).send({ error: "unauthorized" });
+      }
+      const parsed = superAdminMeEmailSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: "validation_error",
+          details: parsed.error.flatten(),
+        });
+      }
+      const row = await repo.findSuperAdminById(id);
+      if (!row) {
+        return reply.status(404).send({ error: "not_found" });
+      }
+      const ok = await bcrypt.compare(
+        parsed.data.currentPassword,
+        row.passwordHash,
+      );
+      if (!ok) {
+        return reply.status(401).send({ error: "invalid_credentials" });
+      }
+      const nextEmail = parsed.data.email.toLowerCase();
+      const existing = await repo.findByEmail(nextEmail);
+      if (existing && existing.id !== id) {
+        return reply.status(409).send({
+          error: "email_taken",
+          message: "That email is already in use.",
+        });
+      }
+      const updated = await repo.updateSuperAdminEmail(id, nextEmail);
+      if (!updated) {
+        return reply.status(404).send({ error: "not_found" });
+      }
+      const token = await reply.superAdminJwtSign({
+        sub: updated.id,
+        email: updated.email,
+      });
+      return reply.send({
+        id: updated.id,
+        email: updated.email,
+        createdAt: updated.createdAt.toISOString(),
+        access_token: token,
+        token_type: "Bearer" as const,
+        expires_in: env.SUPER_ADMIN_ACCESS_EXPIRES_IN,
+      });
+    },
+  );
+
+  app.post(
+    "/v1/super-admin/me/password",
+    {
+      preHandler: ipAllowAndVerifySuperJwt,
+      schema: {
+        tags: ["super-admin"],
+        security: [{ superAdminBearer: [] }],
+        summary: "Change super-admin password",
+        body: {
+          type: "object",
+          required: ["currentPassword", "newPassword"],
+          properties: {
+            currentPassword: { type: "string" },
+            newPassword: { type: "string", minLength: 8 },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      const id = superAdminIdFromRequest(req);
+      if (!id) {
+        return reply.status(401).send({ error: "unauthorized" });
+      }
+      const parsed = superAdminMePasswordSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: "validation_error",
+          details: parsed.error.flatten(),
+        });
+      }
+      const row = await repo.findSuperAdminById(id);
+      if (!row) {
+        return reply.status(404).send({ error: "not_found" });
+      }
+      const ok = await bcrypt.compare(
+        parsed.data.currentPassword,
+        row.passwordHash,
+      );
+      if (!ok) {
+        return reply.status(401).send({ error: "invalid_credentials" });
+      }
+      await repo.setSuperAdminPassword(id, parsed.data.newPassword);
+      return reply.status(204).send();
     },
   );
 

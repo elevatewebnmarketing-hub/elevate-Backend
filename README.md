@@ -128,6 +128,9 @@ Uses default test env in [`test/setup-env.ts`](test/setup-env.ts). Point `DATABA
 | `GET` | `/v1/docs` | Swagger UI — **not** registered when `NODE_ENV=production` |
 | `GET` | `/v1/openapi.json` | OpenAPI document |
 | `POST` | `/v1/super-admin/auth/login` | Body: `email`, `password` — returns super-admin JWT |
+| `GET` | `/v1/super-admin/me` | Bearer super-admin JWT — profile (`id`, `email`, `createdAt`) |
+| `PATCH` | `/v1/super-admin/me/email` | Bearer JWT — body: `email`, `currentPassword`; returns new JWT |
+| `POST` | `/v1/super-admin/me/password` | Bearer JWT — body: `currentPassword`, `newPassword` (min 8) |
 | `GET` etc. | `/v1/super-admin/*` | Bearer super-admin JWT (see OpenAPI tag `super-admin`) |
 | `POST` | `/v1/public/leads` | Site key + optional per-site origin allowlist |
 | `POST` | `/v1/auth/login` | Body: `email`, `password`, `organizationSlug` |

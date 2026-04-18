@@ -41,6 +41,34 @@ export function createSuperAdminRepository(db: Db, env: Env) {
       return row;
     },
 
+    async findSuperAdminById(id: string) {
+      const rows = await db
+        .select()
+        .from(superAdmins)
+        .where(eq(superAdmins.id, id))
+        .limit(1);
+      return rows[0];
+    },
+
+    async updateSuperAdminEmail(id: string, email: string) {
+      const [row] = await db
+        .update(superAdmins)
+        .set({ email: email.toLowerCase() })
+        .where(eq(superAdmins.id, id))
+        .returning();
+      return row;
+    },
+
+    async setSuperAdminPassword(id: string, plainPassword: string) {
+      const passwordHash = await bcrypt.hash(plainPassword, 12);
+      const [row] = await db
+        .update(superAdmins)
+        .set({ passwordHash })
+        .where(eq(superAdmins.id, id))
+        .returning();
+      return row;
+    },
+
     async listOrganizations() {
       return db.select().from(organizations).orderBy(desc(organizations.createdAt));
     },

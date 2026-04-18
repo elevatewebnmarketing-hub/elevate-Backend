@@ -11,7 +11,7 @@ import {
 
 const IDLE_SIGN_OUT_MS = 30 * 60 * 1000;
 
-type Tab = "orgs" | "sites" | "users" | "leads" | "media";
+type Tab = "account" | "orgs" | "sites" | "users" | "leads" | "media";
 
 type Organization = {
   id: string;
@@ -280,6 +280,7 @@ export default function App() {
         <nav className="mx-auto flex max-w-6xl gap-1 px-4 pb-3">
           {(
             [
+              ["account", "Account"],
               ["orgs", "Organizations"],
               ["sites", "Sites"],
               ["users", "Users"],
@@ -303,6 +304,9 @@ export default function App() {
         </nav>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-8">
+        {tab === "account" && (
+          <AccountPanel onError={showError} onSuccessMsg={setBanner} />
+        )}
         {tab === "orgs" && (
           <OrgsPanel onError={showError} onSuccessMsg={setBanner} />
         )}
@@ -416,6 +420,219 @@ function LoginView({
           </button>
         </form>
       </div>
+    </div>
+  );
+}
+
+type SuperAdminMe = {
+  id: string;
+  email: string;
+  createdAt: string;
+};
+
+function AccountPanel({
+  onError,
+  onSuccessMsg,
+}: {
+  onError: (e: unknown) => void;
+  onSuccessMsg: (s: string | null) => void;
+}) {
+  const [me, setMe] = useState<SuperAdminMe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [emailNew, setEmailNew] = useState("");
+  const [emailCurrentPwd, setEmailCurrentPwd] = useState("");
+  const [pwdCurrent, setPwdCurrent] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [pwdConfirm, setPwdConfirm] = useState("");
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [savingPwd, setSavingPwd] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<SuperAdminMe>("/v1/super-admin/me");
+      setMe(res);
+      setEmailNew(res.email);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function submitEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!me) return;
+    if (emailNew.trim().toLowerCase() === me.email.toLowerCase()) {
+      onSuccessMsg("Email is unchanged.");
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      const res = await apiFetch<
+        SuperAdminMe & {
+          access_token: string;
+          token_type: string;
+          expires_in: string | number;
+        }
+      >("/v1/super-admin/me/email", {
+        method: "PATCH",
+        json: {
+          email: emailNew.trim(),
+          currentPassword: emailCurrentPwd,
+        },
+      });
+      setToken(res.access_token);
+      setSuperAdminEmail(res.email);
+      setMe({ id: res.id, email: res.email, createdAt: res.createdAt });
+      setEmailCurrentPwd("");
+      onSuccessMsg("Email updated. Your session token was refreshed.");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingEmail(false);
+    }
+  }
+
+  async function submitPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (pwdNew !== pwdConfirm) {
+      onError(new Error("New passwords do not match."));
+      return;
+    }
+    setSavingPwd(true);
+    try {
+      await apiFetch("/v1/super-admin/me/password", {
+        method: "POST",
+        json: { currentPassword: pwdCurrent, newPassword: pwdNew },
+      });
+      setPwdCurrent("");
+      setPwdNew("");
+      setPwdConfirm("");
+      onSuccessMsg("Password updated.");
+    } catch (e) {
+      onError(e);
+    } finally {
+      setSavingPwd(false);
+    }
+  }
+
+  return (
+    <div className="space-y-10">
+      <div>
+        <h2 className="text-lg font-medium text-white">Account</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Change the platform super-admin email or password. Your current password
+          is required for each change.
+        </p>
+      </div>
+      {loading ? (
+        <p className="text-slate-500">Loading…</p>
+      ) : me ? (
+        <>
+          <p className="text-sm text-slate-400">
+            Signed in as{" "}
+            <span className="font-medium text-slate-200">{me.email}</span>
+            <span className="text-slate-600"> · </span>
+            <span className="text-slate-500">
+              account since {formatTs(me.createdAt)}
+            </span>
+          </p>
+
+          <form
+            className="max-w-lg space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-6"
+            onSubmit={(e) => void submitEmail(e)}
+          >
+            <h3 className="text-sm font-medium text-slate-200">Change email</h3>
+            <label className="block text-sm">
+              <span className="text-slate-400">New email</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
+                type="email"
+                autoComplete="email"
+                value={emailNew}
+                onChange={(e) => setEmailNew(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-400">Current password</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
+                type="password"
+                autoComplete="current-password"
+                value={emailCurrentPwd}
+                onChange={(e) => setEmailCurrentPwd(e.target.value)}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={savingEmail}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {savingEmail ? "Saving…" : "Update email"}
+            </button>
+          </form>
+
+          <form
+            className="max-w-lg space-y-4 rounded-xl border border-slate-800 bg-slate-900/50 p-6"
+            onSubmit={(e) => void submitPassword(e)}
+          >
+            <h3 className="text-sm font-medium text-slate-200">
+              Change password
+            </h3>
+            <label className="block text-sm">
+              <span className="text-slate-400">Current password</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
+                type="password"
+                autoComplete="current-password"
+                value={pwdCurrent}
+                onChange={(e) => setPwdCurrent(e.target.value)}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-400">New password (min 8 characters)</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
+                type="password"
+                autoComplete="new-password"
+                value={pwdNew}
+                onChange={(e) => setPwdNew(e.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-slate-400">Confirm new password</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none ring-violet-500 focus:ring-2"
+                type="password"
+                autoComplete="new-password"
+                value={pwdConfirm}
+                onChange={(e) => setPwdConfirm(e.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={savingPwd}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
+            >
+              {savingPwd ? "Saving…" : "Update password"}
+            </button>
+          </form>
+        </>
+      ) : (
+        <p className="text-slate-500">Could not load profile.</p>
+      )}
     </div>
   );
 }
