@@ -136,14 +136,20 @@ export function createBlogPostRepository(db: Db) {
     async listForOrganization(
       organizationId: string,
       filters: { limit: number; offset: number },
-    ): Promise<BlogPostRow[]> {
-      return db
-        .select()
+    ): Promise<BlogPostWithCover[]> {
+      const rows = await db
+        .select({
+          post: blogPosts,
+          coverSecureUrl: mediaAssets.secureUrl,
+        })
         .from(blogPosts)
+        .leftJoin(mediaAssets, eq(blogPosts.coverMediaAssetId, mediaAssets.id))
         .where(eq(blogPosts.organizationId, organizationId))
         .orderBy(desc(blogPosts.updatedAt))
         .limit(filters.limit)
         .offset(filters.offset);
+
+      return rows.map((r) => ({ ...r.post, coverSecureUrl: r.coverSecureUrl ?? null }));
     },
 
     async listPublishedPublic(

@@ -1839,7 +1839,8 @@ function mapLeadDetail(
   };
 }
 
-function mapBlogPostListItem(post: BlogPostRow) {
+function mapBlogPostListItem(post: BlogPostRow | BlogPostWithCover) {
+  const coverUrl = "coverSecureUrl" in post ? post.coverSecureUrl : null;
   return {
     id: post.id,
     slug: post.slug,
@@ -1848,6 +1849,7 @@ function mapBlogPostListItem(post: BlogPostRow) {
     status: post.status,
     publishedAt: post.publishedAt?.toISOString() ?? null,
     coverMediaAssetId: post.coverMediaAssetId,
+    coverUrl,
     createdAt: post.createdAt.toISOString(),
     updatedAt: post.updatedAt.toISOString(),
   };
@@ -1857,7 +1859,6 @@ function mapBlogPostDetail(post: BlogPostWithCover) {
   return {
     ...mapBlogPostListItem(post),
     body: post.body,
-    coverUrl: post.coverSecureUrl,
   };
 }
 
